@@ -1,7 +1,17 @@
+import numpy as np
 import pandas as pd
 
 from src.signals import add_signals
 
+TRADE_COLUMNS = [
+    "trade_id",
+    "entry_date",
+    "exit_date",
+    "entry_price",
+    "exit_price",
+    "return_pct",
+    "holding_days",
+]
 BACKTEST_COLUMNS = [
     "adj_close",
     "ma_short",
@@ -55,3 +65,41 @@ def run_backtest(
     df["drawdown"] = df["equity_strategy"] / df["equity_strategy"].cummax() - 1
 
     return df[BACKTEST_COLUMNS]
+
+def extract_trades(bt: pd.DataFrame) -> pd.DataFrame:
+    """Build the trades table from a backtest DataFrame.
+
+    Because the engine credits day t's return to the position decided at the
+    close of day t-1, a trade is entered at the close of the signal day (the
+    day before the first held day) and exited at the close of the last held day.
+    return_pct is the gross price return (fees excluded). holding_days counts
+    calendar days. A trade still open on the final row is marked to that
+    day's close.
+    """
+    pos = bt["position"].to_numpy()
+    prev_pos = np.concatenate(([0], pos[:-1]))
+    next_pos = np.concatenate((pos[1:], [0]))
+
+    first_held = np.flatnonzero((pos == 1) & (prev_pos == 0))
+    last_held = np.flatnonzero((pos == 1) & (next_pos == 0))
+
+    rows = []
+    for trade_id, (first, last) in enumerate(zip(first_held, last_held), start=1):
+        entry_i = first - 1  # the signal day; position is 0 on row 0, so first >= 1
+        entry_date = bt.index[entry_i]
+        exit_date = bt.index[last]
+        entry_price = float(bt["adj_close"].iloc[entry_i])
+        exit_price = float(bt["adj_close"].iloc[last])
+        rows.append(
+            {
+                "trade_id": trade_id,
+                "entry_date": entry_date,
+                "exit_date": exit_date,
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+                "return_pct": exit_price / entry_price - 1,
+                "holding_days": int((exit_date - entry_date).days),
+            }
+        )
+
+    return pd.DataFrame(rows, columns=TRADE_COLUMNS)

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.engine import run_backtest
+from src.engine import extract_trades, run_backtest
 
 
 def make_prices(values):
@@ -79,3 +79,53 @@ def test_invalid_inputs_raise():
         run_backtest(random_walk(), 5, 20, fee_bps=-1)
     with pytest.raises(ValueError):
         run_backtest(random_walk(), 5, 20, initial_capital=0)
+
+def test_open_trade_is_marked_to_last_close():
+    bt = run_backtest(make_prices(HAND_PRICES), 2, 4, fee_bps=0)
+    trades = extract_trades(bt)
+    assert len(trades) == 1
+    t = trades.iloc[0]
+    # Position is held on rows 7-9, so the signal day is row 6 (price 8).
+    assert t["entry_date"] == bt.index[6]
+    assert t["exit_date"] == bt.index[9]
+    assert t["entry_price"] == pytest.approx(8)
+    assert t["exit_price"] == pytest.approx(11)
+    assert t["return_pct"] == pytest.approx(11 / 8 - 1)
+    assert t["holding_days"] == 3
+
+
+def test_closed_trade_hand_computed():
+    prices = [10, 9, 8, 7, 6, 7, 8, 9, 10, 11, 10, 9, 8, 7, 6]
+    bt = run_backtest(make_prices(prices), 2, 4, fee_bps=0)
+    trades = extract_trades(bt)
+    assert len(trades) == 1
+    t = trades.iloc[0]
+    # Position is held on rows 7-11: entry at row 6 (price 8), exit at row 11 (price 9).
+    assert t["entry_date"] == bt.index[6]
+    assert t["exit_date"] == bt.index[11]
+    assert t["return_pct"] == pytest.approx(9 / 8 - 1)
+    assert t["holding_days"] == 5
+
+
+def test_trade_returns_compound_to_strategy_equity():
+    bt = run_backtest(random_walk(), 5, 20, fee_bps=0, initial_capital=1000)
+    trades = extract_trades(bt)
+    assert len(trades) > 0
+    assert len(trades) == (bt["trade_flag"].sum() + 1) // 2
+    compounded = (1 + trades["return_pct"]).prod()
+    assert compounded == pytest.approx(bt["equity_strategy"].iloc[-1] / 1000)
+
+
+def test_no_trades_returns_empty_frame():
+    bt = run_backtest(make_prices(list(range(30, 0, -1))), 2, 4)
+    trades = extract_trades(bt)
+    assert trades.empty
+    assert list(trades.columns) == [
+        "trade_id",
+        "entry_date",
+        "exit_date",
+        "entry_price",
+        "exit_price",
+        "return_pct",
+        "holding_days",
+    ]

@@ -1,7 +1,11 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
+from matplotlib.patches import Rectangle
+
+from src.sweep import best_params
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
@@ -90,3 +94,58 @@ def make_static_charts(
         plot_drawdown(bt, ticker, out_dir / "drawdown.png"),
         plot_signals(bt, ticker, short_window, long_window, out_dir / "price_signals.png"),
     ]
+
+def plot_sweep_heatmap(
+    grid: pd.DataFrame, ticker: str, path, title_suffix: str = ""
+) -> Path:
+    """Heatmap of Sharpe by (short, long) window, with the best cell outlined."""
+    best_short, best_long, _ = best_params(grid)  # raises if the grid is all NaN
+    data = np.ma.masked_invalid(grid.to_numpy(dtype=float))
+    mask = np.ma.getmaskarray(data)
+
+    fig = Figure(figsize=(10, 6), facecolor=BG)
+    ax = fig.subplots()
+    ax.set_facecolor(BG)
+    im = ax.imshow(data, cmap="viridis", aspect="auto", origin="lower")
+
+    ax.set_xticks(range(len(grid.columns)))
+    ax.set_xticklabels(grid.columns.tolist())
+    ax.set_yticks(range(len(grid.index)))
+    ax.set_yticklabels(grid.index.tolist())
+    ax.set_xlabel("Long MA window (days)", color=FG)
+    ax.set_ylabel("Short MA window (days)", color=FG)
+    ax.set_title(
+        f"{ticker}: Sharpe ratio by MA windows{title_suffix}",
+        color=FG,
+        fontsize=13,
+        loc="left",
+    )
+    ax.tick_params(colors=FG)
+    for spine in ax.spines.values():
+        spine.set_color(GRID)
+
+    midpoint = (data.min() + data.max()) / 2
+    for i in range(data.shape[0]):
+        for j in range(data.shape[1]):
+            if not mask[i, j]:
+                ax.text(
+                    j,
+                    i,
+                    f"{data[i, j]:.2f}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="black" if data[i, j] > midpoint else "white",
+                )
+
+    bi = grid.index.get_loc(best_short)
+    bj = grid.columns.get_loc(best_long)
+    ax.add_patch(
+        Rectangle((bj - 0.5, bi - 0.5), 1, 1, fill=False, edgecolor="#ff4d4d", linewidth=2.5)
+    )
+
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Sharpe ratio", color=FG)
+    cbar.ax.tick_params(colors=FG)
+    cbar.outline.set_edgecolor(GRID)
+    return _save(fig, path)

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+
 from src.engine import rebase_backtest, run_backtest
 from src.metrics import compute_metrics
 
@@ -108,7 +109,7 @@ def train_test_analysis(
         "train_sharpe": train_sharpe,
         "test_sharpe": test_sharpe,
         "test_rank": test_rank,
-        "test_cells": int(len(valid)),
+        "test_cells": len(valid),
         "train_grid": train_grid,
         "test_grid": test_grid,
         "test_strategy": test_strategy,

@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from src.engine import rebase_backtest, run_backtest
 from src.metrics import compute_metrics
 from src.sweep import best_params, run_sweep, train_test_analysis
+
 
 def random_walk(n=300, seed=0):
     rng = np.random.default_rng(seed)
@@ -88,10 +90,10 @@ def test_train_test_no_leakage_from_test_period():
 def test_train_test_results_are_consistent():
     prices = random_walk(500)
     res = train_test_analysis(prices, prices.index[300], [5, 10], [20, 50])
-    s, l = res["best_short"], res["best_long"]
-    assert res["train_sharpe"] == pytest.approx(res["train_grid"].loc[s, l])
+    s, lng = res["best_short"], res["best_long"]
+    assert res["train_sharpe"] == pytest.approx(res["train_grid"].loc[s, lng])
     assert res["train_sharpe"] == pytest.approx(res["train_grid"].max().max())
-    assert res["test_sharpe"] == pytest.approx(res["test_grid"].loc[s, l])
+    assert res["test_sharpe"] == pytest.approx(res["test_grid"].loc[s, lng])
     assert res["test_cells"] == 4
     assert 1 <= res["test_rank"] <= res["test_cells"]
 

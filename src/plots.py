@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 
@@ -23,13 +24,13 @@ from src.theme import (
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
-STRATEGY_COLOR = "#00c2a8"
-BENCH_COLOR = "#8a8f98"
-BUY_COLOR = "#2ecc71"
-SELL_COLOR = "#e74c3c"
-BG = "#0e1117"
-FG = "#e6e6e6"
-GRID = "#2a2f3a"
+STRATEGY_COLOR = STRATEGY
+BENCH_COLOR = BENCH
+BUY_COLOR = BUY
+SELL_COLOR = SELL
+BG = PAPER
+FG = INK
+GRID = RULE
 
 
 def _new_axes(title: str, ylabel: str):
@@ -82,8 +83,8 @@ def plot_signals(
 ) -> Path:
     fig, ax = _new_axes(f"{ticker}: Price, Moving Averages, and Signals", "Adjusted close ($)")
     ax.plot(bt.index, bt["adj_close"], color=BENCH_COLOR, linewidth=1.0, alpha=0.9, label="Price")
-    ax.plot(bt.index, bt["ma_short"], color="#f5a623", linewidth=1.3, label=f"{short_window}-day MA")
-    ax.plot(bt.index, bt["ma_long"], color="#4a90e2", linewidth=1.3, label=f"{long_window}-day MA")
+    ax.plot(bt.index, bt["ma_short"], color=MA_SHORT, linewidth=1.3, label=f"{short_window}-day MA")
+    ax.plot(bt.index, bt["ma_long"], color=MA_LONG, linewidth=1.3, label=f"{long_window}-day MA")
 
     change = bt["signal"].diff()
     buys = bt[change == 1]
@@ -122,7 +123,9 @@ def plot_sweep_heatmap(
     fig = Figure(figsize=(10, 6), facecolor=BG)
     ax = fig.subplots()
     ax.set_facecolor(BG)
-    im = ax.imshow(data, cmap="viridis", aspect="auto", origin="lower")
+    vmax = float(np.abs(data).max())
+    cmap = LinearSegmentedColormap.from_list("sharpe", [SELL, HEAT_MID, STRATEGY])
+    im = ax.imshow(data, cmap=cmap, vmin=-vmax, vmax=vmax, aspect="auto", origin="lower")
 
     ax.set_xticks(range(len(grid.columns)))
     ax.set_xticklabels(grid.columns.tolist())
@@ -140,7 +143,6 @@ def plot_sweep_heatmap(
     for spine in ax.spines.values():
         spine.set_color(GRID)
 
-    midpoint = (data.min() + data.max()) / 2
     for i in range(data.shape[0]):
         for j in range(data.shape[1]):
             if not mask[i, j]:
@@ -151,13 +153,13 @@ def plot_sweep_heatmap(
                     ha="center",
                     va="center",
                     fontsize=8,
-                    color="black" if data[i, j] > midpoint else "white",
+                    color="white" if abs(data[i, j]) > 0.6 * vmax else FG,
                 )
 
     bi = grid.index.get_loc(best_short)
     bj = grid.columns.get_loc(best_long)
     ax.add_patch(
-        Rectangle((bj - 0.5, bi - 0.5), 1, 1, fill=False, edgecolor="#ff4d4d", linewidth=2.5)
+        Rectangle((bj - 0.5, bi - 0.5), 1, 1, fill=False, edgecolor=FG, linewidth=2.5)
     )
 
     cbar = fig.colorbar(im, ax=ax)

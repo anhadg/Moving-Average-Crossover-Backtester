@@ -7,7 +7,13 @@ import streamlit as st
 from src.data import load_prices
 from src.engine import extract_trades, run_backtest
 from src.metrics import summarize
-from src.plots import interactive_drawdown, interactive_equity, interactive_signals
+from src.plots import (
+    interactive_drawdown,
+    interactive_equity,
+    interactive_signals,
+    interactive_sweep_heatmap,
+)
+from src.sweep import train_test_analysis
 from src.theme import BENCH, INK, MUTED, PAPER, RULE, SIDEBAR, STRATEGY
 
 PRESETS = ["SPY", "QQQ", "AAPL", "Other"]
@@ -94,7 +100,152 @@ def comparison_table(summary: dict) -> str:
 def show_chart(fig) -> None:
     st.plotly_chart(fig, width="stretch", config={"displaylogo": False})
 
+ABOUT_TEXT = """
+**What the strategy does.** Every day it compares two simple moving averages of the closing price, a short one and a long one (50 and 200 days by default). While the short average sits above the long average, the strategy holds the asset. Otherwise it holds cash. It never sells short and never borrows.
 
+**How trades and costs work.** A signal is read at the close and acted on the next trading day. Each time the position changes, a fee in basis points is deducted (1 basis point is 0.01 percent). Buy and hold is the benchmark: the same asset over the same dates with no trading.
+
+**What lookahead bias is.** Lookahead bias means using information that was not yet available when a decision was made. If a rule can see today's close and also earns today's return, the backtest looks smarter than any real trader could be. This app delays every signal by one day, and the project's tests check that changing the final day's price cannot change any earlier result.
+
+**Why the sweep uses a train/test split.** Trying many window pairs and keeping the best one mostly rewards luck in that particular stretch of history. The Sweep tab picks the best pair on the earlier period, then scores that same pair on a later period it never saw. A big drop between the two shows how much the first number was flattered.
+
+**Limits to keep in mind.** Prices are adjusted daily closes from Yahoo Finance, which can contain errors. The model ignores taxes and any trading costs beyond the fee you set. Results describe the past only.
+
+**Disclaimer.** This is an educational project and not financial advice.
+"""
+
+
+@st.cache_data(show_spinner=False)
+def cached_analysis(ticker, start, end, fee_bps, capital, split):
+    prices = load_prices(ticker, start, end)
+    return train_test_analysis(
+        prices, split, fee_bps=fee_bps, initial_capital=capital
+    )
+
+
+def trades_for_display(trades: pd.DataFrame) -> pd.DataFrame:
+    out = trades.copy()
+    out["entry_date"] = out["entry_date"].dt.strftime("%Y-%m-%d")
+    out["exit_date"] = out["exit_date"].dt.strftime("%Y-%m-%d")
+    out["return_pct"] = out["return_pct"] * 100
+    return out.rename(
+        columns={
+            "trade_id": "Trade",
+            "entry_date": "Entry date",
+            "exit_date": "Exit date",
+            "entry_price": "Entry price",
+            "exit_price": "Exit price",
+            "return_pct": "Return (%)",
+            "holding_days": "Days held",
+        }
+    )
+
+
+def render_sweep(bt: pd.DataFrame, p: dict) -> None:
+    c1, c2 = st.columns(2, vertical_alignment="bottom")
+    split = c1.date_input(
+        "Train/test split",
+        value=bt.index[len(bt) // 2].date(),
+        min_value=bt.index[0].date(),
+        max_value=bt.index[-1].date(),
+        format="YYYY-MM-DD",
+        help="Window pairs are chosen using data before this date, then scored on data from this date on.",
+    )
+    run_clicked = c2.button("Run sweep", width="stretch")
+
+    key = (
+        p["ticker"],
+        p["start"],
+        p["end"],
+        float(p["fee_bps"]),
+        float(p["capital"]),
+        str(split),
+    )
+    if run_clicked:
+        try:
+            with st.spinner("Testing every pair of averages..."):
+                analysis = cached_analysis(*key)
+        except ValueError as exc:
+            st.error(
+                f"Could not run the sweep. {exc} Try a later split date or a longer date range."
+            )
+        else:
+            st.session_state["sweep_results"] = {"key": key, "analysis": analysis}
+
+    saved = st.session_state.get("sweep_results")
+    if saved is None or saved["key"] != key:
+        st.info(
+            "Choose a split date, then run the sweep. It tests about 90 pairs of averages and takes a few seconds."
+        )
+        return
+
+    res = saved["analysis"]
+    view = st.radio(
+        "Period shown",
+        ["In-sample (train)", "Out-of-sample (test)"],
+        horizontal=True,
+    )
+    if view.startswith("In-sample"):
+        grid = res["train_grid"]
+        suffix = f"in-sample, before {split}"
+    else:
+        grid = res["test_grid"]
+        suffix = f"out-of-sample, from {split}"
+
+    show_chart(
+        interactive_sweep_heatmap(
+            grid,
+            f"{p['ticker']}: Sharpe ratio by pair of averages ({suffix})",
+            highlight=(res["best_short"], res["best_long"]),
+        )
+    )
+    rank_text = (
+        f", ranking {res['test_rank']} of {res['test_cells']} pairs"
+        if res["test_rank"]
+        else ""
+    )
+    st.markdown(
+        f"Best pair on the training data: **{res['best_short']}/{res['best_long']}** "
+        f"(Sharpe {fmt(res['train_sharpe'], 'num')}). On the test period the same pair scores "
+        f"**{fmt(res['test_sharpe'], 'num')}**{rank_text}. Buy and hold scores "
+        f"{fmt(res['test_buy_and_hold']['sharpe'], 'num')} over the test period."
+    )
+    st.caption(
+        "Each cell is the Sharpe ratio for one pair of averages. Blue is positive and red is negative. "
+        "The outlined cell is the pair that scored best on the training data, so the test view shows "
+        "how it held up on data it never saw."
+    )
+
+
+def render_trades(trades: pd.DataFrame, bt: pd.DataFrame, p: dict) -> None:
+    if trades.empty:
+        st.info(
+            "The strategy made no trades in this period. Try a wider date range or shorter averages."
+        )
+        return
+    table = trades_for_display(trades)
+    st.dataframe(
+        table,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Entry price": st.column_config.NumberColumn(format="%.2f"),
+            "Exit price": st.column_config.NumberColumn(format="%.2f"),
+            "Return (%)": st.column_config.NumberColumn(format="%.2f"),
+        },
+    )
+    d1, d2 = st.columns([1, 3], vertical_alignment="center")
+    d1.download_button(
+        "Download CSV",
+        table.to_csv(index=False),
+        file_name=f"{p['ticker']}_trades.csv",
+        mime="text/csv",
+    )
+    note = "Click a column header to sort. Returns are gross price returns before fees."
+    if bt["position"].iloc[-1] == 1:
+        note += " The last trade is still open and is valued at the final close."
+    d2.caption(note)
+    
 # ---------- Sidebar controls ----------
 with st.sidebar:
     preset = st.selectbox("Ticker", PRESETS)
@@ -203,7 +354,9 @@ else:
             unsafe_allow_html=True,
         )
     with right:
-        tab_equity, tab_signals, tab_drawdown = st.tabs(["Equity", "Signals", "Drawdown"])
+        tab_equity, tab_signals, tab_drawdown, tab_sweep, tab_trades, tab_about = st.tabs(
+            ["Equity", "Signals", "Drawdown", "Sweep", "Trades", "About"]
+        )
         with tab_equity:
             show_chart(interactive_equity(bt, p["ticker"]))
             st.caption(
@@ -219,3 +372,9 @@ else:
         with tab_drawdown:
             show_chart(interactive_drawdown(bt, p["ticker"]))
             st.caption("How far each portfolio sat below its previous peak. Shallower is better.")
+        with tab_sweep:
+            render_sweep(bt, p)
+        with tab_trades:
+            render_trades(results["trades"], bt, p)
+        with tab_about:
+            st.markdown(ABOUT_TEXT)

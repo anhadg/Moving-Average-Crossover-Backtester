@@ -11,6 +11,7 @@ from src.theme import (
     BENCH,
     BUY,
     FONT_BODY,
+    HEAT_MID,
     INK,
     MA_LONG,
     MA_SHORT,
@@ -299,3 +300,44 @@ def interactive_drawdown(bt: pd.DataFrame, ticker: str) -> go.Figure:
     )
     fig.update_yaxes(ticksuffix="%")
     return _style_interactive(fig, f"{ticker}: drawdown from previous peak", "Drawdown (%)")
+
+def interactive_sweep_heatmap(
+    grid: pd.DataFrame, title: str, highlight=None
+) -> go.Figure:
+    """Sharpe heatmap (rows = short window, columns = long window).
+
+    Red is negative, blue is positive, and 0 sits at the neutral middle.
+    highlight is an optional (short, long) pair to outline.
+    """
+    fig = go.Figure(
+        go.Heatmap(
+            z=grid.to_numpy(dtype=float),
+            x=[str(c) for c in grid.columns],
+            y=[str(r) for r in grid.index],
+            colorscale=[[0.0, SELL], [0.5, HEAT_MID], [1.0, STRATEGY]],
+            zmid=0,
+            xgap=2,
+            ygap=2,
+            texttemplate="%{z:.2f}",
+            hoverongaps=False,
+            hovertemplate="Short %{y}, long %{x}<br>Sharpe %{z:.2f}<extra></extra>",
+            colorbar={"title": {"text": "Sharpe"}, "thickness": 14},
+        )
+    )
+    if highlight is not None:
+        short, long = highlight
+        xi = list(grid.columns).index(long)
+        yi = list(grid.index).index(short)
+        fig.add_shape(
+            type="rect",
+            x0=xi - 0.5,
+            x1=xi + 0.5,
+            y0=yi - 0.5,
+            y1=yi + 0.5,
+            line={"color": INK, "width": 3},
+        )
+    _style_interactive(fig, title, "Short average (days)")
+    fig.update_xaxes(title_text="Long average (days)", type="category", showgrid=False)
+    fig.update_yaxes(type="category", showgrid=False)
+    fig.update_layout(hovermode="closest", height=460, showlegend=False)
+    return fig

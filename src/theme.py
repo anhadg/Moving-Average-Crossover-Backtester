@@ -12,5 +12,6 @@ MA_SHORT = "#b8741a"
 MA_LONG = "#6a2c5a"
 BUY = "#2f7d4f"
 SELL = "#a23b3b"
+HEAT_MID = "#f7f8f3"
 
 FONT_BODY = "Atkinson Hyperlegible, system-ui, sans-serif"

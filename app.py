@@ -254,7 +254,7 @@ with st.sidebar:
     else:
         ticker = preset
 
-    today = dt.date.today()
+    today = dt.datetime.now(dt.UTC).date()
     c1, c2 = st.columns(2)
     start = c1.date_input(
         "Start",
@@ -319,7 +319,7 @@ if should_run:
                 metrics = summarize(bt, trades)
         except ValueError as exc:
             st.error(str(exc))
-        except Exception:
+        except Exception:  # noqa: BLE001  yfinance raises many different error types
             st.error(
                 "Could not download price data right now. Check your connection and try again."
             )

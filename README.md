@@ -14,7 +14,7 @@ The app runs in the browser with nothing to install. If nobody has visited recen
 
 ## Key findings
 
-On SPY from 2015 to 2024, a 50/200-day crossover with a 5 basis point fee returned 137.5% (9.0% a year), while buy-and-hold returned 239.6% (13.0% a year). The strategy was calmer, with 14.1% annualized volatility against 17.6%, but its Sharpe ratio was still lower at 0.69 against 0.78. Its maximum drawdown matched buy-and-hold at 33.7%, because the slow signal stayed invested through the March 2020 selloff and only exited on March 31, after the low. Fees barely mattered here since the rule made only five trades in ten years: total return was <<RETURN_AT_0_BPS>> with no fees and <<RETURN_AT_25_BPS>> at 25 basis points.
+On SPY from 2015 to 2024, a 50/200-day crossover with a 5 basis point fee returned 137.5% (9.0% a year), while buy-and-hold returned 239.6% (13.0% a year). The strategy was calmer, with 14.1% annualized volatility against 17.6%, but its Sharpe ratio was still lower at 0.69 against 0.78. Its maximum drawdown matched buy-and-hold at 33.7%, because the slow signal stayed invested through the March 2020 selloff and only exited on March 31, after the low. Fees were a small drag because the rule made only five trades in ten years: total return was 138.6% with no fees, 137.5% at 5 basis points, and 133.3% at 25 basis points. After that selloff the rule sat out the start of the rebound and re-entered on July 6, 2020 at a price more than 23%
 
 The out-of-sample test was the most useful result. Picking the best pair of windows on 2015 to 2019 gave 20/225 with a Sharpe ratio of 1.02. On 2020 to 2024 the same pair scored 0.48, ranked 85th out of 89 pairs, and trailed buy-and-hold's 0.75 over the same years. That gap is what overfitting looks like. One split on one ticker is not proof, and five trades is a small sample, so treat these numbers as a demonstration of the method and not a verdict on the strategy.
 
@@ -29,6 +29,7 @@ The out-of-sample test was the most useful result. Picking the best pair of wind
 | Win rate | 60.00% | n/a |
 
 Settings: 50/200-day simple moving averages, long or flat, 5 basis points per position change, $10,000 starting capital.
+The fifth trade is still open on the last day and is valued at that day's close, so the win rate is 3 wins out of 5 trades.
 
 ## Screenshots
 

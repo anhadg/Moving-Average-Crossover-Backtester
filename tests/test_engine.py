@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
-
-from src.engine import extract_trades, run_backtest
+from src.engine import extract_trades, rebase_backtest, run_backtest
 
 
 def make_prices(values):
@@ -129,3 +128,24 @@ def test_no_trades_returns_empty_frame():
         "return_pct",
         "holding_days",
     ]
+
+def test_rebase_restarts_equity_at_start():
+    bt = run_backtest(make_prices(HAND_PRICES), 2, 4, fee_bps=0, initial_capital=1000)
+    out = rebase_backtest(bt, bt.index[7], initial_capital=1000)
+    assert len(out) == 4
+    assert out.index[0] == bt.index[6]
+    assert out["strategy_return"].iloc[0] == 0
+    assert out["equity_strategy"].iloc[0] == pytest.approx(1000)
+    assert out["equity_buyhold"].iloc[0] == pytest.approx(1000)
+    assert out["drawdown"].iloc[0] == 0
+    # Held on rows 7-9: price goes 8 -> 11, so equity ends at 1000 * 11/8.
+    assert out["equity_strategy"].iloc[-1] == pytest.approx(1375)
+    assert out["equity_buyhold"].iloc[-1] == pytest.approx(1375)
+
+
+def test_rebase_invalid_start_raises():
+    bt = run_backtest(make_prices(HAND_PRICES), 2, 4)
+    with pytest.raises(ValueError):
+        rebase_backtest(bt, bt.index[0])  # no anchor row before the start
+    with pytest.raises(ValueError):
+        rebase_backtest(bt, bt.index[-1])  # fewer than 2 rows to score

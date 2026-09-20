@@ -96,10 +96,12 @@ def make_static_charts(
     ]
 
 def plot_sweep_heatmap(
-    grid: pd.DataFrame, ticker: str, path, title_suffix: str = ""
+    grid: pd.DataFrame, ticker: str, path, title_suffix: str = "", highlight=None
 ) -> Path:
     """Heatmap of Sharpe by (short, long) window, with the best cell outlined."""
     best_short, best_long, _ = best_params(grid)  # raises if the grid is all NaN
+    if highlight is not None:
+        best_short, best_long = highlight
     data = np.ma.masked_invalid(grid.to_numpy(dtype=float))
     mask = np.ma.getmaskarray(data)
 

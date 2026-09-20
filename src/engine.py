@@ -103,3 +103,27 @@ def extract_trades(bt: pd.DataFrame) -> pd.DataFrame:
         )
 
     return pd.DataFrame(rows, columns=TRADE_COLUMNS)
+
+def rebase_backtest(
+    bt: pd.DataFrame, start, initial_capital: float = 10_000.0
+) -> pd.DataFrame:
+    """Slice a backtest to start at `start` and restart both equity curves at initial_capital.
+
+    The row just before `start` is kept as an anchor with zero returns, so the
+    first scored day is the first day on or after `start`. Signals and positions
+    are untouched, so the moving averages are already warmed up from earlier data.
+    """
+    pos = int(bt.index.searchsorted(pd.Timestamp(start)))
+    if pos < 1 or len(bt) - pos < 2:
+        raise ValueError(
+            "start must fall inside the backtest, with a row before it and at least 2 rows from it onward."
+        )
+
+    out = bt.iloc[pos - 1 :].copy()
+    for col in ("strategy_return", "market_return", "trade_flag"):
+        out.iloc[0, out.columns.get_loc(col)] = 0
+
+    out["equity_strategy"] = initial_capital * (1 + out["strategy_return"]).cumprod()
+    out["equity_buyhold"] = initial_capital * (1 + out["market_return"]).cumprod()
+    out["drawdown"] = out["equity_strategy"] / out["equity_strategy"].cummax() - 1
+    return out

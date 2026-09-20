@@ -2,10 +2,23 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 
 from src.sweep import best_params
+from src.theme import (
+    BENCH,
+    BUY,
+    FONT_BODY,
+    INK,
+    MA_LONG,
+    MA_SHORT,
+    PAPER,
+    RULE,
+    SELL,
+    STRATEGY,
+)
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
@@ -151,3 +164,138 @@ def plot_sweep_heatmap(
     cbar.ax.tick_params(colors=FG)
     cbar.outline.set_edgecolor(GRID)
     return _save(fig, path)
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _style_interactive(fig: go.Figure, title: str, ylabel: str) -> go.Figure:
+    fig.update_layout(
+        title={"text": title, "x": 0, "xanchor": "left", "font": {"size": 16, "color": INK}},
+        height=540,
+        margin={"l": 10, "r": 10, "t": 70, "b": 10},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font={"family": FONT_BODY, "color": INK, "size": 13},
+        hovermode="x unified",
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.0, "xanchor": "right", "x": 1},
+    )
+    fig.update_xaxes(title_text="Date", gridcolor=RULE, linecolor=RULE, zeroline=False)
+    fig.update_yaxes(title_text=ylabel, gridcolor=RULE, linecolor=RULE, zeroline=False)
+    return fig
+
+
+def interactive_equity(bt: pd.DataFrame, ticker: str) -> go.Figure:
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=bt.index,
+            y=bt["equity_buyhold"],
+            name="Buy & Hold",
+            line={"color": BENCH, "width": 2},
+            hovertemplate="%{y:$,.0f}",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=bt.index,
+            y=bt["equity_strategy"],
+            name="MA crossover",
+            line={"color": STRATEGY, "width": 2.6},
+            hovertemplate="%{y:$,.0f}",
+        )
+    )
+    fig.update_yaxes(tickprefix="$", tickformat=",.0f")
+    return _style_interactive(fig, f"{ticker}: growth of starting capital", "Portfolio value ($)")
+
+
+def interactive_signals(
+    bt: pd.DataFrame, ticker: str, short_window: int, long_window: int
+) -> go.Figure:
+    change = bt["signal"].diff()
+    buys = bt[change == 1]
+    sells = bt[change == -1]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=bt.index,
+            y=bt["adj_close"],
+            name="Price",
+            line={"color": BENCH, "width": 1.3},
+            hovertemplate="%{y:$,.2f}",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=bt.index,
+            y=bt["ma_short"],
+            name=f"{short_window}-day average",
+            line={"color": MA_SHORT, "width": 1.8},
+            hovertemplate="%{y:$,.2f}",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=bt.index,
+            y=bt["ma_long"],
+            name=f"{long_window}-day average",
+            line={"color": MA_LONG, "width": 1.8},
+            hovertemplate="%{y:$,.2f}",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=buys.index,
+            y=buys["adj_close"],
+            mode="markers",
+            name="Buy signal",
+            marker={"symbol": "triangle-up", "size": 12, "color": BUY, "line": {"color": PAPER, "width": 1}},
+            hovertemplate="%{y:$,.2f}",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=sells.index,
+            y=sells["adj_close"],
+            mode="markers",
+            name="Sell signal",
+            marker={"symbol": "triangle-down", "size": 12, "color": SELL, "line": {"color": PAPER, "width": 1}},
+            hovertemplate="%{y:$,.2f}",
+        )
+    )
+    fig.update_yaxes(tickprefix="$")
+    return _style_interactive(fig, f"{ticker}: price, averages, and signals", "Adjusted close ($)")
+
+
+def interactive_drawdown(bt: pd.DataFrame, ticker: str) -> go.Figure:
+    bench_dd = (bt["equity_buyhold"] / bt["equity_buyhold"].cummax() - 1) * 100
+    strat_dd = bt["drawdown"] * 100
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=bt.index,
+            y=bench_dd,
+            name="Buy & Hold",
+            fill="tozeroy",
+            line={"color": BENCH, "width": 1.2},
+            fillcolor=_rgba(BENCH, 0.35),
+            hovertemplate="%{y:.1f}%",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=bt.index,
+            y=strat_dd,
+            name="MA crossover",
+            fill="tozeroy",
+            line={"color": STRATEGY, "width": 1.4},
+            fillcolor=_rgba(STRATEGY, 0.4),
+            hovertemplate="%{y:.1f}%",
+        )
+    )
+    fig.update_yaxes(ticksuffix="%")
+    return _style_interactive(fig, f"{ticker}: drawdown from previous peak", "Drawdown (%)")

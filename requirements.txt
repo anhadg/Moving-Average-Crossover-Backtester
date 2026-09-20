@@ -1,8 +1,8 @@
-yfinance
-pandas
-numpy
-plotly
-matplotlib
-streamlit
-pytest
-ruff
+matplotlib==3.11.2
+numpy==2.5.3
+pandas==3.0.6
+plotly==7.1.0
+pytest==9.1.1
+ruff==0.16.8
+streamlit==1.64.0
+yfinance==1.7.0
